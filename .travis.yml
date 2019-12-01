@@ -1,0 +1,71 @@
+notifications:
+  email: false
+git:
+  quiet: true
+  depth: false
+jdk: openjdk8
+node_js: lts/*
+python: 3.7
+services: docker
+os: linux
+arch: amd64
+addons:
+  apt:
+    update: true
+    packages:
+      - python3-pip
+      - sudo
+      - lsof
+      - curl
+      #- jq
+install: true
+before_install:
+  - |
+    if [ ! -f ${HOME}/.local/daggerok/bash-functions/master/main.bash ] ; then
+      mkdir -p ${HOME}/.local/daggerok/bash-functions/master ;
+      curl -s https://raw.githubusercontent.com/daggerok/bash-functions/master/main.bash > ${HOME}/.local/daggerok/bash-functions/master/main.bash ;
+    fi
+    source ${HOME}/.local/daggerok/bash-functions/master/main.bash ;
+  - stop_any 80 5432 8000 8080
+  - export PATH=$HOME/.local/bin:$PATH
+  - pip3 install --user --upgrade pip setuptools
+  - pip install --user --upgrade httpie docker-compose
+jobs:
+  include:
+    - stage: test
+      name: handebars native fabric8
+      before_script:
+        - docker network prune -f
+        - docker network create quarkus-vertx-template-engines
+        - ./mvnw -f handlebars/ -Pnative
+        - ./mvnw -f handlebars/ -Pnative docker:start
+      script:
+        - http :8000
+        - http :8000/fallback.html
+        - http :8000/about
+        - http :8000/404
+      after_script:
+        - ./mvnw -f handlebars/ -Pnative docker:stop docker:remove
+        - docker network prune -f
+    - stage: test
+      name: handebars jvm fabric8
+      before_script:
+        - docker network prune -f
+        - docker network create quarkus-vertx-template-engines
+        - cd $TRAVIS_BUILD_DIR && ./mvnw -f handlebars/
+        - cd $TRAVIS_BUILD_DIR && ./mvnw -f handlebars/ docker:start
+      script:
+        - http :8000
+        - http :8000/about
+        - http :8000/not-found
+        - http :8000/fallback.html
+      after_script:
+        - cd $TRAVIS_BUILD_DIR && ./mvnw -f handlebars/ docker:stop docker:remove
+        - docker network prune -f
+cache:
+  pip: true
+  packages: true
+  directories:
+    - ~/.m2
+    - ~/.docker
+    - ~/.local/daggerok
